@@ -8,12 +8,19 @@ on:
 
 jobs:
   opencode:
+    # 1. Prevents the workflow from running on every normal comment unless it mentions OpenCode
     if: |
-      contains(github.event.comment.body, '/oc') ||
+      contains(github.event.comment.body, '/oc') || 
       contains(github.event.comment.body, '/opencode')
     runs-on: ubuntu-latest
+    
+    # 2. Required permissions for OpenCode to read issues/PRs and post answers
     permissions:
       id-token: write
+      contents: write
+      pull-requests: write
+      issues: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -24,7 +31,8 @@ jobs:
       - name: Run OpenCode
         uses: anomalyco/opencode/github@latest
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Replace with your actual LLM provider key secret (e.g., ANTHROPIC_API_KEY, OPENAI_API_KEY, HF_TOKEN)
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }} 
         with:
+          # Define the model you want the agent to use
           model: anthropic/claude-sonnet-4-20250514
-          # share: true
