@@ -3,11 +3,9 @@ name: Build Kivy Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
-    paths:
-      - 'app/src/main/python/**'
-      - 'build_android.sh'
-      - '.github/workflows/build-android.yml'
+    branches:
+      - main
+      - master
 
 permissions:
   contents: read
