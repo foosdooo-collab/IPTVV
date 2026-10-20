@@ -22,7 +22,7 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: "temurin"
           java-version: "17"
 
       - name: Set up Python
@@ -42,15 +42,14 @@ jobs:
 
       - name: Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platform-tools
-            platforms;android-35
-            ndk;28.2.13676358
+
+      - name: Install Android SDK packages and NDK
+        run: |
+          sdkmanager "platform-tools" "platforms;android-35" "ndk;28.2.13676358"
+          yes | sdkmanager --licenses >/dev/null || true
 
       - name: Set Android build environment
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
           echo "ANDROIDSDK=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROIDNDK=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
           echo "ANDROIDAPI=35" >> "$GITHUB_ENV"
