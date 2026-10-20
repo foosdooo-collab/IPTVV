@@ -1,17 +1,19 @@
-name: Build Android APK
+name: Build Kivy Android APK
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+      - master
 
 permissions:
   contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
 
     steps:
       - name: Check out repository
@@ -22,31 +24,59 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
-      - name: Find Gradle wrapper
-        id: gradle
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git zip unzip autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
+            cmake libffi-dev libssl-dev
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade python-for-android
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platform-tools
+            platforms;android-35
+            ndk;28.2.13676358
+
+      - name: Set Android build environment
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          echo "ANDROIDSDK=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROIDNDK=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROIDAPI=35" >> "$GITHUB_ENV"
+          echo "NDKAPI=23" >> "$GITHUB_ENV"
+          echo "ANDROIDNDKVER=r28c" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        run: |
+          chmod +x ./build_android.sh
+          ./build_android.sh
+
+      - name: Locate APK
+        id: apk
         shell: bash
         run: |
-          wrapper="$(find . -type f -name gradlew -not -path '*/.gradle/*' -print -quit)"
-          if [ -z "$wrapper" ]; then
-            echo "No gradlew wrapper found in the repository."
+          apk="$(find "$HOME/.local/share/python-for-android" -type f -name '*.apk' -print -quit)"
+          if [ -z "$apk" ]; then
+            echo "No APK was produced." >&2
             exit 1
           fi
-          project_dir="$(dirname "$wrapper")"
-          echo "project_dir=$project_dir" >> "$GITHUB_OUTPUT"
-          echo "Using Gradle wrapper: $wrapper"
+          mkdir -p artifacts
+          cp "$apk" artifacts/kivy-android.apk
 
-      - name: Build debug APK
-        shell: bash
-        run: |
-          cd "${{ steps.gradle.outputs.project_dir }}"
-          chmod +x ./gradlew
-          ./gradlew assembleDebug
-
-      - name: Upload debug APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: "**/build/outputs/apk/debug/*.apk"
+          name: kivy-android-apk
+          path: artifacts/kivy-android.apk
           if-no-files-found: error
