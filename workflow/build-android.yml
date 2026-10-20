@@ -1,4 +1,5 @@
 name: Build Kivy Android APK
+run-name: 🚀 Build APK on ${{ github.ref_name }} by @${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -79,3 +80,4 @@ jobs:
           name: kivy-android-apk
           path: artifacts/kivy-android.apk
           if-no-files-found: error
+          
