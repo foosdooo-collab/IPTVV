@@ -3,7 +3,8 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: ["**"]
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -21,22 +22,31 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
+      - name: Find Gradle wrapper
+        id: gradle
+        shell: bash
         run: |
-          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-          yes | sdkmanager --licenses
+          wrapper="$(find . -type f -name gradlew -not -path '*/.gradle/*' -print -quit)"
+          if [ -z "$wrapper" ]; then
+            echo "No gradlew wrapper found in the repository."
+            exit 1
+          fi
+          project_dir="$(dirname "$wrapper")"
+          echo "project_dir=$project_dir" >> "$GITHUB_OUTPUT"
+          echo "Using Gradle wrapper: $wrapper"
 
-      - name: Build APK
+      - name: Build debug APK
+        shell: bash
         run: |
+          cd "${{ steps.gradle.outputs.project_dir }}"
           chmod +x ./gradlew
           ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: "**/build/outputs/apk/debug/*.apk"
+          if-no-files-found: error
