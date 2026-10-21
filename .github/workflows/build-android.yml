@@ -1,110 +1,69 @@
-name: Build Kivy Android APK
+name: Android Integration
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [main, master]
+on: [push, pull_request]
 
-permissions:
-  contents: read
+env:
+  PYTHONFORANDROID_PREREQUISITES_INSTALL_INTERACTIVE: 0
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 120
-
-    env:
-      ANDROID_HOME: ${{ runner.temp }}/android-sdk
-      ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
-      ANDROID_API: "35"
-      NDK_VERSION: "28.2.13676358"
-
+  Integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - name: Setup Python
+        uses: actions/setup-python@v7
         with:
+          python-version: '3.x'
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
           distribution: temurin
-          java-version: "17"
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - uses: actions/checkout@v7
 
-      - name: Install host build dependencies
+      - name: Setup environment
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .
+
+      - name: Verify Buildozer
+        run: buildozer --help
+
+      - name: Verify Buildozer spec
+        run: buildozer init
+
+      - name: SDK, NDK, and p4a download
+        shell: bash
+        run: |
+          sed -i.bak 's/^# *android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
+          sed -i.bak 's/^p4a.branch = master/p4a.branch = develop/' buildozer.spec
+          buildozer android p4a -- --help
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential git zip unzip autoconf libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
-            cmake libffi-dev libssl-dev
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade python-for-android
+          sudo apt-get install -y automake libltdl-dev
 
-      - name: Install Android SDK command-line tools
-        shell: bash
-        run: |
-          set -euo pipefail
+      - name: Debug Build (APK)
+        run: buildozer android debug
 
-          mkdir -p "$ANDROID_HOME/cmdline-tools"
-          curl -fsSL \
-            https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip \
-            -o "$RUNNER_TEMP/cmdline-tools.zip"
+      - name: Release Build (APK)
+        if: runner.os == 'Linux'
+        env:
+          BUILDOZER_ALLOW_ORG_TEST_DOMAIN: '1'
+        run: buildozer android release
 
-          mkdir -p "$RUNNER_TEMP/android-cmdline-tools"
-          unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/android-cmdline-tools"
-          mv "$RUNNER_TEMP/android-cmdline-tools/cmdline-tools" \
-            "$ANDROID_HOME/cmdline-tools/latest"
-
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-
-      - name: Accept licenses and install Android packages
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses >/dev/null
-          sdkmanager --sdk_root="$ANDROID_HOME" \
-            "platform-tools" \
-            "platforms;android-${ANDROID_API}" \
-            "ndk;${NDK_VERSION}"
-
-          echo "ANDROIDSDK=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "ANDROIDNDK=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
-          echo "ANDROIDAPI=${ANDROID_API}" >> "$GITHUB_ENV"
-          echo "NDKAPI=23" >> "$GITHUB_ENV"
-          echo "ANDROIDNDKVER=r28c" >> "$GITHUB_ENV"
-
-      - name: Build APK with python-for-android
-        run: |
-          chmod +x ./build_android.sh
-          ./build_android.sh
-
-      - name: Find generated APK
-        id: apk
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="$(find "$HOME/.local/share/python-for-android" \
-            -type f -name '*.apk' -print -quit)"
-
-          if [[ -z "$APK" ]]; then
-            echo "No APK was produced by python-for-android." >&2
-            exit 1
-          fi
-
-          mkdir -p artifacts
-          cp "$APK" artifacts/kivy-android.apk
-          echo "path=artifacts/kivy-android.apk" >> "$GITHUB_OUTPUT"
-
-      - name: Upload APK artifact
+      - name: Upload APK artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kivy-android-apk
-          path: artifacts/kivy-android.apk
-          if-no-files-found: error
+          name: kivy-launcher-${{ runner.os }}-apk
+          path: bin/*.apk
+          if-no-files-found: warn
           retention-days: 14
